@@ -69,9 +69,105 @@
       time-scrubber {
         display: block;
       }
+
+      #app-content {
+        display: none;
+      }
+
+      body.authenticated #login-screen {
+        display: none;
+      }
+
+      body.authenticated #app-content {
+        display: block;
+      }
+
+      #login-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 24px;
+      }
+
+      .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 32px;
+        background: #334155;
+        border-radius: 12px;
+        min-width: 280px;
+      }
+
+      .login-form h1 {
+        margin: 0 0 8px 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #e2e8f0;
+        text-align: center;
+      }
+
+      .login-form label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 14px;
+        color: #94a3b8;
+      }
+
+      .login-form input {
+        padding: 10px 12px;
+        border: 1px solid #475569;
+        border-radius: 8px;
+        background: #1e293b;
+        color: #e2e8f0;
+        font-size: 14px;
+      }
+
+      .login-form input:focus {
+        outline: none;
+        border-color: #60a5fa;
+      }
+
+      .login-form button {
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: #60a5fa;
+        color: #1e293b;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 8px;
+      }
+
+      .login-form button:hover {
+        background: #3b82f6;
+      }
+
+      .login-error {
+        font-size: 13px;
+        color: #f87171;
+        text-align: center;
+        margin: 0;
+      }
     </style>
   </head>
   <body>
+    <div id="login-screen">
+      <form class="login-form" id="login-form">
+        <h1>Time Scrubber</h1>
+        <p class="login-error" id="login-error" aria-live="polite"></p>
+        <label for="login-username">Username</label>
+        <input type="text" id="login-username" name="username" required autocomplete="username" />
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" name="password" required autocomplete="current-password" />
+        <button type="submit">Submit</button>
+      </form>
+    </div>
+    <div id="app-content">
       <div class="timeline-style-panel">
       <h3>Configure</h3>
       <ul class="timeline-style-list">
@@ -156,7 +252,61 @@
       </ul>
     </div>
     <time-scrubber id="time-scrubber"></time-scrubber>
+    </div>
 
+    <script>
+      (function () {
+        const AUTH_KEY = "time-scrubber-auth";
+        const VALID_USERNAME = "detroit";
+        const VALID_PASSWORD = "atheneum";
+
+        function isAuthenticated() {
+          return sessionStorage.getItem(AUTH_KEY) === "true";
+        }
+
+        function setAuthenticated(value) {
+          if (value) {
+            sessionStorage.setItem(AUTH_KEY, "true");
+          } else {
+            sessionStorage.removeItem(AUTH_KEY);
+          }
+        }
+
+        function showApp() {
+          document.body.classList.add("authenticated");
+        }
+
+        function hideApp() {
+          document.body.classList.remove("authenticated");
+        }
+
+        function initAuth() {
+          if (isAuthenticated()) {
+            showApp();
+            return;
+          }
+
+          const form = document.getElementById("login-form");
+          const errorEl = document.getElementById("login-error");
+
+          form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const username = document.getElementById("login-username").value.trim();
+            const password = document.getElementById("login-password").value;
+
+            if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+              errorEl.textContent = "";
+              setAuthenticated(true);
+              showApp();
+            } else {
+              errorEl.textContent = "Invalid username or password.";
+            }
+          });
+        }
+
+        initAuth();
+      })();
+    </script>
     <script>
       class TimeScrubber extends HTMLElement {
         constructor() {
