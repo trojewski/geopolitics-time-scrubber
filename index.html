@@ -1,0 +1,1358 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Time Scrubber</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #1e293b;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .timeline-style-panel {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        padding: 16px;
+        background: #334155;
+        border-radius: 8px;
+        z-index: 10;
+      }
+
+      .timeline-style-panel h3 {
+        margin: 0 0 12px 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .timeline-style-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .timeline-style-list label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: #e2e8f0;
+        cursor: pointer;
+      }
+
+      .timeline-style-list input[type="radio"],
+      .timeline-style-list input[type="checkbox"] {
+        margin: 0;
+        accent-color: #60a5fa;
+        cursor: pointer;
+      }
+
+      .timeline-style-panel ul + h3 {
+        margin-top: 20px;
+      }
+
+      time-scrubber {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+      <div class="timeline-style-panel">
+      <h3>Configure</h3>
+      <ul class="timeline-style-list">
+        <li>
+          <label>
+            <input type="checkbox" name="configure-play-button" id="configure-play-button" checked />
+            Play Button
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="checkbox" name="configure-prev-next" id="configure-prev-next" checked />
+            Prev / Next Buttons
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="checkbox" name="configure-scrollbar" id="configure-scrollbar" checked />
+            Scrollbar
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="checkbox" name="configure-season-indicator" id="configure-season-indicator" checked />
+            Season Indicator
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="checkbox" name="configure-current-date" id="configure-current-date" checked />
+            Current Date Label
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="checkbox" name="configure-season-label" id="configure-season-label" />
+            Season Label
+          </label>
+        </li>
+      </ul>
+      <h3>Timeline Style</h3>
+      <ul class="timeline-style-list">
+        <li>
+          <label>
+            <input type="radio" name="timeline-style" value="notches" checked />
+            Notched
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="radio" name="timeline-style" value="smoothed" />
+            Smoothed
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="radio" name="timeline-style" value="zooming" />
+            Magnified
+          </label>
+        </li>
+      </ul>
+      <h3>Season Indicator</h3>
+      <ul class="timeline-style-list">
+        <li>
+          <label>
+            <input type="radio" name="season-indicator" value="compass" checked />
+            Compass
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="radio" name="season-indicator" value="clock" />
+            Clock
+          </label>
+        </li>
+        <li>
+          <label>
+            <input type="radio" name="season-indicator" value="quadrants" />
+            Quadrants
+          </label>
+        </li>
+      </ul>
+    </div>
+    <time-scrubber id="time-scrubber"></time-scrubber>
+
+    <script>
+      class TimeScrubber extends HTMLElement {
+        constructor() {
+          super();
+
+          this.startYear = 1775;
+          this.endYear = 2026;
+          this.totalYears = this.endYear - this.startYear + 1; // 251
+          this.indicatorWidth = 2;
+          this.indicatorGap = 4;
+          this.step = this.indicatorWidth + this.indicatorGap; // 6px
+          this.barWidth = 480;
+          this.barHeight = 64;
+          this.scrollbarHeight = 4;
+          this.seasonNames = ["Winter", "Spring", "Summer", "Autumn"];
+          this.turningRanges = [
+            { start: 1773, end: 1794, season: "Winter", turning: "Crisis" },
+            { start: 1794, end: 1822, season: "Spring", turning: "High" },
+            { start: 1822, end: 1844, season: "Summer", turning: "Awakening" },
+            { start: 1844, end: 1860, season: "Autumn", turning: "Unraveling" },
+            { start: 1860, end: 1865, season: "Winter", turning: "Crisis" },
+            { start: 1865, end: 1886, season: "Spring", turning: "High" },
+            { start: 1886, end: 1908, season: "Summer", turning: "Awakening" },
+            { start: 1908, end: 1929, season: "Autumn", turning: "Unraveling" },
+            { start: 1929, end: 1945, season: "Winter", turning: "Crisis" },
+            { start: 1946, end: 1964, season: "Spring", turning: "High" },
+            { start: 1964, end: 1984, season: "Summer", turning: "Awakening" },
+            { start: 1984, end: 2008, season: "Autumn", turning: "Unraveling" },
+            { start: 2008, end: null, season: "Winter", turning: "Crisis" },
+          ];
+          this.crisisRanges = [
+            [1773, 1794], // Crisis (Winter)
+            [1860, 1865], // Crisis (Winter)
+            [1929, 1945], // Crisis (Winter)
+            [2008, this.endYear], // Crisis (Winter): 2008-present
+          ];
+
+          this.currentIndex = 0;
+          this.mode = "notches";
+          this.seasonIndicatorStyle = "compass";
+          this.dragState = null;
+          this.scrollDragState = null;
+          this.repositionOffset = { x: 0, y: 0 };
+          this.repositionDragState = null;
+
+          this.attachShadow({ mode: "open" });
+          this.shadowRoot.innerHTML = `
+            <style>
+              * {
+                box-sizing: border-box;
+              }
+
+              .time-scrubber-layout {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                align-items: flex-start;
+              }
+
+              .labels-row {
+                display: flex;
+                align-items: flex-end;
+                gap: 0;
+                min-height: 0;
+                margin-bottom: 8px;
+              }
+
+              .labels-row.labels-row--empty {
+                margin-bottom: 0;
+              }
+
+              .labels-spacer {
+                width: 80px;
+                flex-shrink: 0;
+              }
+
+              .labels-row--play-hidden .labels-spacer:first-child {
+                width: 0;
+                min-width: 0;
+                overflow: hidden;
+              }
+
+              .labels-row--season-hidden .labels-spacer:last-child {
+                width: 0;
+                min-width: 0;
+                overflow: hidden;
+              }
+
+              .labels-wrapper {
+                width: ${this.barWidth}px;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 6px;
+              }
+
+              .main-row {
+                display: flex;
+                align-items: flex-start;
+                gap: 16px;
+              }
+
+              .play-button {
+                width: 64px;
+                height: 64px;
+                border: none;
+                border-radius: 999px;
+                background: #334155;
+                display: grid;
+                place-items: center;
+                cursor: pointer;
+              }
+
+              .play-button:hover {
+                background: #475569;
+              }
+
+              .play-button:focus-visible {
+                outline: 2px solid #60a5fa;
+                outline-offset: 2px;
+              }
+
+              .play-button-icon {
+                width: 0;
+                height: 0;
+                border-top: 10px solid transparent;
+                border-bottom: 10px solid transparent;
+                border-left: 16px solid #e2e8f0;
+                margin-left: 4px;
+              }
+
+              .play-button.is-playing .play-button-icon {
+                width: 16px;
+                height: 20px;
+                margin-left: 0;
+                border: 0;
+                background:
+                  linear-gradient(to right, #e2e8f0 0 5px, transparent 5px 11px, #e2e8f0 11px 16px);
+              }
+
+              .time-scrubber {
+                width: max-content;
+                user-select: none;
+              }
+
+              .timeline-row {
+                display: flex;
+                align-items: flex-start;
+                gap: 16px;
+              }
+
+              .timeline-column {
+                width: ${this.barWidth}px;
+              }
+
+              .current-date-label,
+              .season-label {
+                display: block;
+                width: max-content;
+                padding: 4px 8px;
+                border-radius: 6px;
+                background: #334155;
+                color: #e2e8f0;
+                font-size: 12px;
+                line-height: 1;
+                letter-spacing: 0.2px;
+              }
+
+              .season-label {
+                margin: 0 auto;
+              }
+
+              .current-date-label {
+                margin: 0 auto;
+              }
+
+              .season-column {
+                width: 64px;
+              }
+
+              .timeline-bar {
+                position: relative;
+                width: ${this.barWidth}px;
+                height: ${this.barHeight}px;
+                overflow: hidden;
+                border-radius: 10px;
+                background: #334155;
+                cursor: grab;
+              }
+
+              .timeline-bar.is-dragging {
+                cursor: grabbing;
+              }
+
+              .crisis-nav-gradient {
+                position: absolute;
+                top: 0;
+                width: 128px;
+                height: 64px;
+                pointer-events: none;
+                z-index: 2;
+              }
+
+              .crisis-nav-gradient.prev {
+                left: 0;
+                background: linear-gradient(90deg, rgba(51, 65, 85, 1) 0%, rgba(51, 65, 85, 1) 50%, rgba(51, 65, 85, 0) 100%);
+              }
+
+              .crisis-nav-gradient.next {
+                right: 0;
+                background: linear-gradient(270deg, rgba(51, 65, 85, 1) 0%, rgba(51, 65, 85, 1) 50%, rgba(51, 65, 85, 0) 100%);
+              }
+
+              .crisis-nav-button {
+                position: absolute;
+                top: 0;
+                width: 64px;
+                height: 64px;
+                border: 0;
+                display: grid;
+                place-items: center;
+                color: #94a3b8;
+                cursor: pointer;
+                z-index: 3;
+                background: transparent;
+              }
+
+              .crisis-nav-button.prev {
+                left: 0;
+              }
+
+              .crisis-nav-button.next {
+                right: 0;
+              }
+
+              .crisis-nav-button:hover {
+                color: #e2e8f0;
+              }
+
+              .crisis-nav-button:focus-visible {
+                outline: 2px solid #60a5fa;
+                outline-offset: -2px;
+              }
+
+              .crisis-nav-icon {
+                width: 32px;
+                height: 32px;
+              }
+
+              .date-indicators-track {
+                position: absolute;
+                top: 50%;
+                left: 0;
+                height: 32px;
+                width: ${((this.totalYears - 1) * this.step) + this.indicatorWidth}px;
+                transform: translateY(-50%);
+                will-change: transform;
+              }
+
+              .date-indicator {
+                position: absolute;
+                width: ${this.indicatorWidth}px;
+                transform: translateX(-50%);
+                border-radius: 999px;
+              }
+
+              .date-indicators-track.zooming {
+                height: 64px;
+              }
+
+              .date-indicators-track.smoothed .date-indicator,
+              .date-indicators-track.zooming .date-indicator {
+                transition: height 80ms ease, top 80ms ease;
+              }
+
+              .date-indicator.season-spring {
+                top: 8px;
+                height: 8px;
+                background: #00f5ff;
+              }
+
+              .date-indicator.season-summer {
+                top: 6px;
+                height: 12px;
+                background: #39ff14;
+              }
+
+              .date-indicator.season-autumn {
+                top: 4px;
+                height: 16px;
+                background: #ffb300;
+              }
+
+              .date-indicator.season-winter {
+                top: 0;
+                height: 24px;
+                background: #ff1744;
+              }
+
+              .current-date-indicator {
+                position: absolute;
+                top: 0;
+                left: 50%;
+                width: 2px;
+                height: ${this.barHeight}px;
+                transform: translateX(-50%);
+                background: #94a3b8;
+                z-index: 2;
+              }
+
+              .timeline-scrollbar {
+                position: relative;
+                width: ${this.barWidth}px;
+                height: ${this.scrollbarHeight}px;
+                margin: 4px auto 0;
+                border-radius: 999px;
+                background: #334155;
+                cursor: pointer;
+              }
+
+              .timeline-scrollbar-thumb {
+                position: absolute;
+                top: 0;
+                left: 0;
+                height: ${this.scrollbarHeight}px;
+                border-radius: 999px;
+                background: #94a3b8;
+                cursor: grab;
+                will-change: transform;
+              }
+
+              .timeline-scrollbar-thumb.is-dragging {
+                cursor: grabbing;
+              }
+
+              .reposition-handle {
+                width: 64px;
+                height: 8px;
+                margin: 32px auto 0;
+                border-radius: 999px;
+                background: #94a3b8;
+                cursor: grab;
+              }
+
+              .reposition-handle:hover {
+                background: #e2e8f0;
+              }
+
+              .reposition-handle.is-dragging {
+                cursor: grabbing;
+              }
+
+              .cyclical-season-indicator {
+                position: relative;
+                width: 64px;
+                height: 64px;
+                margin: 0 auto;
+                border-radius: 999px;
+                background: #334155;
+              }
+
+              .season-icon {
+                position: absolute;
+                width: 20px;
+                height: 20px;
+                color: #94a3b8;
+                display: grid;
+                place-items: center;
+              }
+
+              .season-icon.is-active.spring {
+                color: #00f5ff;
+              }
+
+              .season-icon.is-active.summer {
+                color: #39ff14;
+              }
+
+              .season-icon.is-active.autumn {
+                color: #ffb300;
+              }
+
+              .season-icon.is-active.winter {
+                color: #ff1744;
+              }
+
+              .season-icon svg {
+                width: 20px;
+                height: 20px;
+              }
+
+              .season-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: currentColor;
+                display: none;
+              }
+
+              .season-indicator-compass .season-icon .season-dot {
+                display: none;
+              }
+
+              .season-indicator-compass .season-icon svg {
+                display: block;
+              }
+
+              .season-indicator-clock .season-icon .season-dot {
+                display: block;
+              }
+
+              .season-indicator-clock .season-icon svg {
+                display: none;
+              }
+
+              .season-icon.spring {
+                top: 4px;
+                left: 50%;
+                transform: translateX(-50%);
+              }
+
+              .season-icon.summer {
+                top: 50%;
+                right: 4px;
+                transform: translateY(-50%);
+              }
+
+              .season-icon.autumn {
+                bottom: 4px;
+                left: 50%;
+                transform: translateX(-50%);
+              }
+
+              .season-icon.winter {
+                top: 50%;
+                left: 4px;
+                transform: translateY(-50%);
+              }
+
+              .season-icon svg {
+                width: 20px;
+                height: 20px;
+              }
+
+              .season-pie-slice {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 64px;
+                height: 64px;
+                transform: translate(-50%, -50%) rotate(270deg);
+                transform-origin: center center;
+                transition: transform 220ms ease;
+                z-index: 0;
+                pointer-events: none;
+              }
+
+              .season-pie-slice svg {
+                width: 100%;
+                height: 100%;
+                display: block;
+              }
+
+              .season-clock-hand {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 2px;
+                height: 20px;
+                background: #94a3b8;
+                border-radius: 999px;
+                transform: translate(-50%, -100%) rotate(270deg);
+                transform-origin: 50% 100%;
+                transition: transform 220ms ease;
+                z-index: 0;
+                pointer-events: none;
+              }
+
+              .season-center-dot {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                width: 6px;
+                height: 6px;
+                border-radius: 999px;
+                transform: translate(-50%, -50%);
+                background: #94a3b8;
+                z-index: 0;
+                pointer-events: none;
+              }
+
+              .season-icon {
+                z-index: 1;
+              }
+
+              .season-indicator-clock .season-pie-slice {
+                display: none;
+              }
+
+              .season-indicator-compass .season-clock-hand,
+              .season-indicator-compass .season-center-dot {
+                display: none;
+              }
+
+              .season-indicator-quadrants .season-icon,
+              .season-indicator-quadrants .season-pie-slice,
+              .season-indicator-quadrants .season-clock-hand,
+              .season-indicator-quadrants .season-center-dot {
+                display: none;
+              }
+
+              .season-indicator-quadrants {
+                border-radius: 0;
+                background: transparent;
+              }
+
+              .season-quadrants {
+                display: none;
+                width: 64px;
+                height: 64px;
+                grid-template-columns: 30px 30px;
+                grid-template-rows: 30px 30px;
+                gap: 4px;
+              }
+
+              .season-indicator-quadrants .season-quadrants {
+                display: grid;
+              }
+
+              .season-quadrant {
+                width: 30px;
+                height: 30px;
+                display: grid;
+                place-items: center;
+                background: #334155;
+                transition: background-color 220ms ease;
+              }
+
+              .season-quadrant.spring {
+                border-radius: 8px 2px 2px 2px;
+              }
+
+              .season-quadrant.summer {
+                border-radius: 2px 8px 2px 2px;
+              }
+
+              .season-quadrant.autumn {
+                border-radius: 2px 2px 8px 2px;
+              }
+
+              .season-quadrant.winter {
+                border-radius: 2px 2px 2px 8px;
+              }
+
+              .season-quadrant .season-quadrant-icon {
+                width: 16px;
+                height: 16px;
+                color: #94a3b8;
+                transition: color 220ms ease;
+              }
+
+              .season-quadrant.is-active {
+                background: rgba(148, 163, 184, 0.3);
+              }
+
+              .season-quadrant.is-active.spring {
+                background: rgba(0, 245, 255, 0.25);
+              }
+
+              .season-quadrant.is-active.spring .season-quadrant-icon {
+                color: #00f5ff;
+              }
+
+              .season-quadrant.is-active.summer {
+                background: rgba(57, 255, 20, 0.25);
+              }
+
+              .season-quadrant.is-active.summer .season-quadrant-icon {
+                color: #39ff14;
+              }
+
+              .season-quadrant.is-active.autumn {
+                background: rgba(255, 179, 0, 0.25);
+              }
+
+              .season-quadrant.is-active.autumn .season-quadrant-icon {
+                color: #ffb300;
+              }
+
+              .season-quadrant.is-active.winter {
+                background: rgba(255, 23, 68, 0.25);
+              }
+
+              .season-quadrant.is-active.winter .season-quadrant-icon {
+                color: #ff1744;
+              }
+
+              .season-quadrant:not(.is-active) .season-quadrant-icon {
+                color: #94a3b8;
+              }
+            </style>
+
+            <div class="time-scrubber-layout">
+              <div class="labels-row" part="labels-row">
+                <div class="labels-spacer" aria-hidden="true"></div>
+                <div class="labels-wrapper">
+                  <div class="season-label" part="season-label">Crisis</div>
+                  <div class="current-date-label" part="current-date-label">1775 AD</div>
+                </div>
+                <div class="labels-spacer" aria-hidden="true"></div>
+              </div>
+              <div class="main-row">
+                <button class="play-button" type="button" aria-label="Play timeline" part="play-button">
+                  <span class="play-button-icon" aria-hidden="true"></span>
+                </button>
+                <div class="time-scrubber">
+                  <div class="timeline-row">
+                    <div class="timeline-column">
+                      <div class="timeline-bar" part="timeline-bar">
+                      <div class="crisis-nav-gradient prev" aria-hidden="true"></div>
+                      <div class="crisis-nav-gradient next" aria-hidden="true"></div>
+                      <button class="crisis-nav-button prev" type="button" aria-label="Previous Crisis" part="previous-crisis-button">
+                        <svg class="crisis-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <path fill="currentColor" d="M6 6h2v12H6zM19 6v12L9.5 12z" />
+                        </svg>
+                      </button>
+                      <div class="date-indicators-track"></div>
+                      <div class="current-date-indicator" part="current-date-indicator"></div>
+                      <button class="crisis-nav-button next" type="button" aria-label="Next Crisis" part="next-crisis-button">
+                        <svg class="crisis-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <path fill="currentColor" d="M16 6h2v12h-2zM5 6l9.5 6L5 18z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="timeline-scrollbar" part="timeline-scrollbar">
+                      <div class="timeline-scrollbar-thumb" part="timeline-scrollbar-thumb"></div>
+                    </div>
+                    <div class="reposition-handle" part="reposition-handle" aria-label="Reposition handle"></div>
+                  </div>
+                  <div class="season-column">
+                    <div class="cyclical-season-indicator season-indicator-compass" aria-label="Cyclical Season Indicator" part="cyclical-season-indicator">
+                      <div class="season-icon spring" data-season="Spring" aria-hidden="true">
+                        <span class="season-dot"></span>
+                        <svg viewBox="0 -960 960 960" fill="currentColor"><path d="M450-80q-33 0-66.5-7.5T315-109q12-121 70-226t149-185q-110 56-190.5 148T231-162q-4-3-7.5-6.5L216-176q-47-47-71.5-105T120-402q0-68 27-130t75-110q81-81 210-105.5t362-4.5q18 239-6 364.5T684-182q-49 49-109.5 75.5T450-80Z"/></svg>
+                      </div>
+                      <div class="season-icon summer" data-season="Summer" aria-hidden="true">
+                        <span class="season-dot"></span>
+                        <svg viewBox="0 -960 960 960" fill="currentColor"><path d="M440-760v-160h80v160h-80Zm266 110-55-55 112-115 56 57-113 113Zm54 210v-80h160v80H760ZM440-40v-160h80v160h-80ZM254-652 140-763l57-56 113 113-56 54Zm508 512L651-255l54-54 114 110-57 59ZM40-440v-80h160v80H40Zm157 300-56-57 112-112 29 27 29 28-114 114Zm113-170q-70-70-70-170t70-170q70-70 170-70t170 70q70 70 70 170t-70 170q-70 70-170 70t-170-70Z"/></svg>
+                      </div>
+                      <div class="season-icon autumn" data-season="Autumn" aria-hidden="true">
+                        <span class="season-dot"></span>
+                        <svg viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-167q-42 27-86.5 47T260-180q-63 0-118.5-28.5T40-280q37-34 79.5-59.5T211-375q-68-55-100-136T79-680q72 1 139 23t122 65v-8q0-91 40.5-171T480-920q58 69 99 149t41 171q0 2-.5 4t-.5 4q56-43 123-64.5T881-680q0 88-32.5 169T748-375q49 10 91.5 35.5T919-280q-46 43-101 71.5T700-180q-50 0-94.5-20T520-247v167h-80Z"/></svg>
+                      </div>
+                      <div class="season-icon winter" data-season="Winter" aria-hidden="true">
+                        <span class="season-dot"></span>
+                        <svg viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-166L310-118l-56-56 186-186v-80h-80L174-254l-56-56 128-130H80v-80h166L118-650l56-56 186 186h80v-80L254-786l56-56 130 128v-166h80v166l130-128 56 56-186 186v80h80l186-186 56 56-128 130h166v80H714l128 130-56 56-186-186h-80v80l186 186-56 56-130-128v166h-80Z"/></svg>
+                      </div>
+                      <div class="season-pie-slice" part="season-pie-slice">
+                        <svg viewBox="0 0 100 100">
+                          <path d="M 50 50 L 14.65 14.65 A 50 50 0 0 1 85.35 14.65 Z" fill="#475569"/>
+                        </svg>
+                      </div>
+                      <div class="season-clock-hand" part="season-clock-hand"></div>
+                      <div class="season-center-dot"></div>
+                      <div class="season-quadrants" part="season-quadrants" aria-hidden="true">
+                        <div class="season-quadrant spring" data-season="Spring">
+                          <svg class="season-quadrant-icon" viewBox="0 -960 960 960" fill="currentColor"><path d="M450-80q-33 0-66.5-7.5T315-109q12-121 70-226t149-185q-110 56-190.5 148T231-162q-4-3-7.5-6.5L216-176q-47-47-71.5-105T120-402q0-68 27-130t75-110q81-81 210-105.5t362-4.5q18 239-6 364.5T684-182q-49 49-109.5 75.5T450-80Z"/></svg>
+                        </div>
+                        <div class="season-quadrant summer" data-season="Summer">
+                          <svg class="season-quadrant-icon" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-760v-160h80v160h-80Zm266 110-55-55 112-115 56 57-113 113Zm54 210v-80h160v80H760ZM440-40v-160h80v160h-80ZM254-652 140-763l57-56 113 113-56 54Zm508 512L651-255l54-54 114 110-57 59ZM40-440v-80h160v80H40Zm157 300-56-57 112-112 29 27 29 28-114 114Zm113-170q-70-70-70-170t70-170q70-70 170-70t170 70q70 70 70 170t-70 170q-70 70-170 70t-170-70Z"/></svg>
+                        </div>
+                        <div class="season-quadrant winter" data-season="Winter">
+                          <svg class="season-quadrant-icon" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-166L310-118l-56-56 186-186v-80h-80L174-254l-56-56 128-130H80v-80h166L118-650l56-56 186 186h80v-80L254-786l56-56 130 128v-166h80v166l130-128 56 56-186 186v80h80l186-186 56 56-128 130h166v80H714l128 130-56 56-186-186h-80v80l186 186-56 56-130-128v166h-80Z"/></svg>
+                        </div>
+                        <div class="season-quadrant autumn" data-season="Autumn">
+                          <svg class="season-quadrant-icon" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-167q-42 27-86.5 47T260-180q-63 0-118.5-28.5T40-280q37-34 79.5-59.5T211-375q-68-55-100-136T79-680q72 1 139 23t122 65v-8q0-91 40.5-171T480-920q58 69 99 149t41 171q0 2-.5 4t-.5 4q56-43 123-64.5T881-680q0 88-32.5 169T748-375q49 10 91.5 35.5T919-280q-46 43-101 71.5T700-180q-50 0-94.5-20T520-247v167h-80Z"/></svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+
+          this.labelsRowEl = this.shadowRoot.querySelector(".labels-row");
+          this.labelEl = this.shadowRoot.querySelector(".current-date-label");
+          this.timelineBarEl = this.shadowRoot.querySelector(".timeline-bar");
+          this.trackEl = this.shadowRoot.querySelector(".date-indicators-track");
+          this.playButtonEl = this.shadowRoot.querySelector(".play-button");
+          this.prevCrisisButtonEl = this.shadowRoot.querySelector(".crisis-nav-button.prev");
+          this.nextCrisisButtonEl = this.shadowRoot.querySelector(".crisis-nav-button.next");
+          this.crisisNavGradientEls = [...this.shadowRoot.querySelectorAll(".crisis-nav-gradient")];
+          this.scrollbarEl = this.shadowRoot.querySelector(".timeline-scrollbar");
+          this.seasonColumnEl = this.shadowRoot.querySelector(".season-column");
+          this.scrollbarThumbEl = this.shadowRoot.querySelector(".timeline-scrollbar-thumb");
+          this.seasonIndicatorEl = this.shadowRoot.querySelector(".cyclical-season-indicator");
+          this.seasonLabelEl = this.shadowRoot.querySelector(".season-label");
+          this.seasonPieSliceEl = this.shadowRoot.querySelector(".season-pie-slice");
+          this.seasonClockHandEl = this.shadowRoot.querySelector(".season-clock-hand");
+          this.seasonIconEls = [...this.shadowRoot.querySelectorAll(".season-icon")];
+          this.seasonQuadrantEls = [...this.shadowRoot.querySelectorAll(".season-quadrant")];
+          this.repositionHandleEl = this.shadowRoot.querySelector(".reposition-handle");
+          this.crisisStartYears = this.crisisRanges.map(([start]) => start);
+          const trackPixelWidth = ((this.totalYears - 1) * this.step) + this.indicatorWidth;
+          this.scrollbarThumbWidth = Math.max(48, Math.round((this.barWidth / trackPixelWidth) * this.barWidth));
+          this.isPlaying = false;
+          this.playbackFrame = null;
+          this.lastFrameTime = null;
+          this.yearsPerSecond = 12;
+
+          this.renderDateIndicators();
+          this.attachEvents();
+          this.updateView();
+          this.updatePlayButton();
+          this.applyRepositionTransform();
+          this.setConfigureVisibility({
+            playButton: true,
+            prevNextButtons: true,
+            scrollbar: true,
+            seasonIndicator: true,
+            currentDate: true,
+            seasonLabel: false,
+          });
+        }
+
+        setConfigureVisibility(opts) {
+          const show = (el, visible) => {
+            if (el) el.style.display = visible ? "" : "none";
+          };
+          if (opts.playButton !== undefined && this.playButtonEl) {
+            show(this.playButtonEl, opts.playButton);
+          }
+          if (this.labelsRowEl && opts.playButton !== undefined) {
+            this.labelsRowEl.classList.toggle("labels-row--play-hidden", !opts.playButton);
+          }
+          if (this.labelsRowEl && opts.seasonIndicator !== undefined) {
+            this.labelsRowEl.classList.toggle("labels-row--season-hidden", !opts.seasonIndicator);
+          }
+          if (opts.prevNextButtons !== undefined) {
+            show(this.prevCrisisButtonEl, opts.prevNextButtons);
+            show(this.nextCrisisButtonEl, opts.prevNextButtons);
+            this.crisisNavGradientEls?.forEach((el) => show(el, opts.prevNextButtons));
+          }
+          if (opts.scrollbar !== undefined && this.scrollbarEl) {
+            show(this.scrollbarEl, opts.scrollbar);
+          }
+          if (opts.seasonIndicator !== undefined && this.seasonColumnEl) {
+            show(this.seasonColumnEl, opts.seasonIndicator);
+          }
+          if (opts.currentDate !== undefined) {
+            this.showCurrentDateLabel = opts.currentDate;
+            if (this.labelEl) {
+              this.labelEl.style.display = opts.currentDate ? "block" : "none";
+            }
+          }
+          if (opts.seasonLabel !== undefined) {
+            this.showSeasonLabel = opts.seasonLabel;
+            if (this.seasonLabelEl) {
+              this.seasonLabelEl.style.display = opts.seasonLabel ? "block" : "none";
+            }
+          }
+          if (this.labelsRowEl && (opts.currentDate !== undefined || opts.seasonLabel !== undefined)) {
+            const showCurrent = opts.currentDate ?? this.showCurrentDateLabel;
+            const showSeason = opts.seasonLabel ?? this.showSeasonLabel;
+            this.labelsRowEl.classList.toggle("labels-row--empty", !showCurrent && !showSeason);
+          }
+        }
+
+        applyRepositionTransform() {
+          this.style.transform = `translate(${this.repositionOffset.x}px, ${this.repositionOffset.y}px)`;
+        }
+
+        getSeasonDimensions(seasonName) {
+          const dims = {
+            Winter: { height: 32, top: 0 },
+            Spring: { height: 8, top: 12 },
+            Summer: { height: 16, top: 8 },
+            Autumn: { height: 24, top: 4 },
+          };
+          return dims[seasonName];
+        }
+
+        getSeasonDimensionsForYear(year) {
+          const turningState = this.getTurningForYear(year);
+          const dims = this.getSeasonDimensions(turningState.range.season);
+          return {
+            ...dims,
+            seasonClass: `season-${turningState.range.season.toLowerCase()}`,
+          };
+        }
+
+        getInterpolatedDimensions(year) {
+          const turningState = this.getTurningForYear(year);
+          const range = turningState.range;
+          const current = this.getSeasonDimensions(range.season);
+          const endYear = range.end ?? this.endYear;
+          const span = Math.max(1, endYear - range.start);
+          const progress = (year - range.start) / span;
+          const nextIndex = (turningState.index + 1) % this.turningRanges.length;
+          const nextRange = this.turningRanges[nextIndex];
+          const next = this.getSeasonDimensions(nextRange.season);
+          return {
+            height: current.height + (next.height - current.height) * progress,
+            top: current.top + (next.top - current.top) * progress,
+            seasonClass: `season-${range.season.toLowerCase()}`,
+          };
+        }
+
+        getZoomingDimensionsForIndex(index) {
+          const maxDist = this.barWidth * 0.165;
+          const distance = Math.abs(index - this.currentIndex) * this.step;
+          const normalizedDist = Math.min(distance, maxDist) / maxDist;
+          const height = 64 - normalizedDist * 56;
+          const top = (64 - height) / 2;
+          const year = this.startYear + index;
+          const turningState = this.getTurningForYear(year);
+          const seasonClass = `season-${turningState.range.season.toLowerCase()}`;
+          return { height, top, seasonClass };
+        }
+
+        renderDateIndicators() {
+          this.trackEl.textContent = "";
+          this.trackEl.classList.toggle("smoothed", this.mode === "smoothed");
+          this.trackEl.classList.toggle("zooming", this.mode === "zooming");
+          let getDims;
+          if (this.mode === "smoothed") {
+            getDims = (year) => this.getInterpolatedDimensions(year);
+          } else if (this.mode === "zooming") {
+            getDims = (_, i) => this.getZoomingDimensionsForIndex(i);
+          } else {
+            getDims = (year) => this.getSeasonDimensionsForYear(year);
+          }
+          const indicators = document.createDocumentFragment();
+          for (let i = 0; i < this.totalYears; i += 1) {
+            const year = this.startYear + i;
+            const line = document.createElement("div");
+            const { height, top, seasonClass } = getDims(year, i);
+            line.className = "date-indicator";
+            line.classList.add(seasonClass);
+            line.dataset.index = String(i);
+            line.style.left = `${(i * this.step) + (this.indicatorWidth / 2)}px`;
+            line.style.height = `${height}px`;
+            line.style.top = `${top}px`;
+            indicators.appendChild(line);
+          }
+          this.trackEl.appendChild(indicators);
+        }
+
+        updateZoomingIndicatorHeights() {
+          if (this.mode !== "zooming") return;
+          const indicators = this.trackEl.querySelectorAll(".date-indicator");
+          indicators.forEach((line) => {
+            const i = parseInt(line.dataset.index, 10);
+            const { height, top } = this.getZoomingDimensionsForIndex(i);
+            line.style.height = `${height}px`;
+            line.style.top = `${top}px`;
+          });
+        }
+
+        attachEvents() {
+          this.playButtonEl.addEventListener("click", () => {
+            if (this.isPlaying) {
+              this.stopPlayback();
+            } else {
+              this.startPlayback();
+            }
+          });
+
+          this.repositionHandleEl.addEventListener("pointerdown", (event) => {
+            this.repositionHandleEl.classList.add("is-dragging");
+            this.repositionHandleEl.setPointerCapture(event.pointerId);
+            this.repositionDragState = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              startOffsetX: this.repositionOffset.x,
+              startOffsetY: this.repositionOffset.y,
+            };
+          });
+
+          this.repositionHandleEl.addEventListener("pointermove", (event) => {
+            if (!this.repositionDragState || event.pointerId !== this.repositionDragState.pointerId) {
+              return;
+            }
+            const dx = event.clientX - this.repositionDragState.startX;
+            const dy = event.clientY - this.repositionDragState.startY;
+            this.repositionOffset = {
+              x: this.repositionDragState.startOffsetX + dx,
+              y: this.repositionDragState.startOffsetY + dy,
+            };
+            this.applyRepositionTransform();
+          });
+
+          const finishRepositionDrag = (event) => {
+            if (!this.repositionDragState || event.pointerId !== this.repositionDragState.pointerId) {
+              return;
+            }
+            this.repositionHandleEl.classList.remove("is-dragging");
+            this.repositionHandleEl.releasePointerCapture(event.pointerId);
+            this.repositionDragState = null;
+          };
+
+          this.repositionHandleEl.addEventListener("pointerup", finishRepositionDrag);
+          this.repositionHandleEl.addEventListener("pointercancel", finishRepositionDrag);
+
+          this.prevCrisisButtonEl.addEventListener("click", () => {
+            this.jumpToPreviousCrisis();
+          });
+
+          this.nextCrisisButtonEl.addEventListener("click", () => {
+            this.jumpToNextCrisis();
+          });
+
+          this.scrollbarEl.addEventListener("pointerdown", (event) => {
+            if (event.target === this.scrollbarThumbEl) {
+              return;
+            }
+            this.stopPlayback();
+            this.jumpScrollbarToClientX(event.clientX);
+          });
+
+          const onScrollThumbPointerMove = (event) => {
+            if (!this.scrollDragState || event.pointerId !== this.scrollDragState.pointerId) {
+              return;
+            }
+            const maxIndex = this.totalYears - 1;
+            const maxTravel = this.barWidth - this.scrollbarThumbWidth;
+            if (maxTravel <= 0 || maxIndex <= 0) {
+              return;
+            }
+            const deltaX = event.clientX - this.scrollDragState.startX;
+            const indexDelta = (deltaX / maxTravel) * maxIndex;
+            this.setCurrentIndex(this.scrollDragState.startIndex + indexDelta);
+          };
+
+          const finishScrollDrag = (event) => {
+            if (!this.scrollDragState || event.pointerId !== this.scrollDragState.pointerId) {
+              return;
+            }
+            this.scrollbarThumbEl.classList.remove("is-dragging");
+            this.scrollbarThumbEl.releasePointerCapture(event.pointerId);
+            document.removeEventListener("pointermove", onScrollThumbPointerMove);
+            document.removeEventListener("pointerup", finishScrollDrag);
+            document.removeEventListener("pointercancel", finishScrollDrag);
+            this.scrollDragState = null;
+          };
+
+          this.scrollbarThumbEl.addEventListener("pointerdown", (event) => {
+            this.stopPlayback();
+            this.scrollbarThumbEl.classList.add("is-dragging");
+            this.scrollbarThumbEl.setPointerCapture(event.pointerId);
+            this.scrollDragState = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startIndex: this.currentIndex,
+            };
+            document.addEventListener("pointermove", onScrollThumbPointerMove);
+            document.addEventListener("pointerup", finishScrollDrag);
+            document.addEventListener("pointercancel", finishScrollDrag);
+          });
+
+          const onTimelinePointerMove = (event) => {
+            if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+              return;
+            }
+            const deltaX = event.clientX - this.dragState.startX;
+            const nextIndex = this.dragState.startIndex - (deltaX / this.step);
+            this.setCurrentIndex(nextIndex);
+          };
+
+          const finishDrag = (event) => {
+            if (!this.dragState || event.pointerId !== this.dragState.pointerId) {
+              return;
+            }
+            this.timelineBarEl.classList.remove("is-dragging");
+            this.timelineBarEl.releasePointerCapture(event.pointerId);
+            document.removeEventListener("pointermove", onTimelinePointerMove);
+            document.removeEventListener("pointerup", finishDrag);
+            document.removeEventListener("pointercancel", finishDrag);
+            this.dragState = null;
+          };
+
+          this.timelineBarEl.addEventListener("pointerdown", (event) => {
+            if (event.target.closest("button")) {
+              return;
+            }
+            this.timelineBarEl.classList.add("is-dragging");
+            this.timelineBarEl.setPointerCapture(event.pointerId);
+            this.dragState = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startIndex: this.currentIndex,
+            };
+            document.addEventListener("pointermove", onTimelinePointerMove);
+            document.addEventListener("pointerup", finishDrag);
+            document.addEventListener("pointercancel", finishDrag);
+          });
+        }
+
+        startPlayback() {
+          if (this.isPlaying) {
+            return;
+          }
+          this.isPlaying = true;
+          this.lastFrameTime = null;
+          this.updatePlayButton();
+          this.playbackFrame = requestAnimationFrame((ts) => this.playbackTick(ts));
+        }
+
+        stopPlayback() {
+          this.isPlaying = false;
+          this.lastFrameTime = null;
+          if (this.playbackFrame !== null) {
+            cancelAnimationFrame(this.playbackFrame);
+            this.playbackFrame = null;
+          }
+          this.updatePlayButton();
+        }
+
+        playbackTick(timestamp) {
+          if (!this.isPlaying) {
+            return;
+          }
+
+          if (this.lastFrameTime === null) {
+            this.lastFrameTime = timestamp;
+          }
+
+          const deltaSeconds = (timestamp - this.lastFrameTime) / 1000;
+          this.lastFrameTime = timestamp;
+          this.setCurrentIndex(this.currentIndex + (deltaSeconds * this.yearsPerSecond));
+
+          if (this.currentIndex >= this.totalYears - 1) {
+            this.stopPlayback();
+            return;
+          }
+
+          this.playbackFrame = requestAnimationFrame((ts) => this.playbackTick(ts));
+        }
+
+        updatePlayButton() {
+          this.playButtonEl.classList.toggle("is-playing", this.isPlaying);
+          this.playButtonEl.setAttribute("aria-label", this.isPlaying ? "Pause timeline" : "Play timeline");
+        }
+
+        jumpToNextCrisis() {
+          const currentYear = this.startYear + Math.round(this.currentIndex);
+          const nextYear = this.crisisStartYears.find((year) => year > currentYear);
+          if (nextYear === undefined) {
+            return;
+          }
+          this.stopPlayback();
+          this.setCurrentIndex(nextYear - this.startYear);
+        }
+
+        jumpToPreviousCrisis() {
+          const currentYear = this.startYear + Math.round(this.currentIndex);
+          const previousYear = [...this.crisisStartYears].reverse().find((year) => year < currentYear);
+          if (previousYear === undefined) {
+            return;
+          }
+          this.stopPlayback();
+          this.setCurrentIndex(previousYear - this.startYear);
+        }
+
+        jumpScrollbarToClientX(clientX) {
+          const maxIndex = this.totalYears - 1;
+          const maxTravel = this.barWidth - this.scrollbarThumbWidth;
+          if (maxTravel <= 0 || maxIndex <= 0) {
+            return;
+          }
+          const scrollbarBounds = this.scrollbarEl.getBoundingClientRect();
+          const pointerX = clientX - scrollbarBounds.left;
+          const desiredThumbLeft = pointerX - (this.scrollbarThumbWidth / 2);
+          const clampedThumbLeft = Math.max(0, Math.min(maxTravel, desiredThumbLeft));
+          const nextIndex = (clampedThumbLeft / maxTravel) * maxIndex;
+          this.setCurrentIndex(nextIndex);
+        }
+
+        getTurningForYear(year) {
+          let index = this.turningRanges.findIndex((range) => (
+            year >= range.start && (range.end === null || year <= range.end)
+          ));
+
+          if (index === -1) {
+            if (year < this.turningRanges[0].start) {
+              index = 0;
+            } else {
+              index = this.turningRanges.length - 1;
+            }
+          }
+
+          return {
+            range: this.turningRanges[index],
+            index,
+          };
+        }
+
+        updateSeasonIndicator(currentYear) {
+          const turningState = this.getTurningForYear(currentYear);
+          const turning = turningState.range;
+          const seasonName = turning.season;
+          const angle = 270 + (turningState.index * 90);
+
+          if (this.seasonIndicatorStyle === "compass") {
+            this.seasonPieSliceEl.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+          } else if (this.seasonIndicatorStyle === "clock") {
+            this.seasonClockHandEl.style.transform = `translate(-50%, -100%) rotate(${angle}deg)`;
+          }
+
+          this.seasonLabelEl.textContent = turning.turning;
+          this.seasonIndicatorEl.setAttribute(
+            "aria-label",
+            `Cyclical Season Indicator: ${turning.turning} (${seasonName}) in ${currentYear}`,
+          );
+          this.seasonIconEls.forEach((iconEl) => {
+            iconEl.classList.toggle("is-active", iconEl.dataset.season === seasonName);
+          });
+          if (this.seasonQuadrantEls) {
+            this.seasonQuadrantEls.forEach((quadEl) => {
+              quadEl.classList.toggle("is-active", quadEl.dataset.season === seasonName);
+            });
+          }
+        }
+
+        setCurrentIndex(index) {
+          const bounded = Math.max(0, Math.min(this.totalYears - 1, index));
+          this.currentIndex = bounded;
+          this.updateView();
+        }
+
+        updateView() {
+          const roundedIndex = Math.round(this.currentIndex);
+          const currentYear = this.startYear + roundedIndex;
+          const centerX = this.barWidth / 2;
+          const trackX = centerX - (this.currentIndex * this.step) - (this.indicatorWidth / 2);
+          const maxIndex = this.totalYears - 1;
+          const maxTravel = this.barWidth - this.scrollbarThumbWidth;
+          const thumbX = maxTravel > 0 && maxIndex > 0 ? (this.currentIndex / maxIndex) * maxTravel : 0;
+
+          this.trackEl.style.transform = `translate(${trackX}px, -50%)`;
+          this.scrollbarThumbEl.style.width = `${this.scrollbarThumbWidth}px`;
+          this.scrollbarThumbEl.style.transform = `translateX(${thumbX}px)`;
+          this.labelEl.textContent = `${currentYear} AD`;
+          this.updateSeasonIndicator(currentYear);
+          this.updateZoomingIndicatorHeights();
+        }
+
+        setSeasonIndicatorStyle(style) {
+          this.seasonIndicatorStyle = style;
+          this.seasonIndicatorEl.classList.toggle("season-indicator-compass", style === "compass");
+          this.seasonIndicatorEl.classList.toggle("season-indicator-clock", style === "clock");
+          this.seasonIndicatorEl.classList.toggle("season-indicator-quadrants", style === "quadrants");
+          const currentYear = this.startYear + Math.round(this.currentIndex);
+          this.updateSeasonIndicator(currentYear);
+        }
+
+        disconnectedCallback() {
+          this.stopPlayback();
+        }
+      }
+
+      customElements.define("time-scrubber", TimeScrubber);
+
+      document.querySelectorAll('input[name="timeline-style"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          const mode = radio.value;
+          const scrubber = document.getElementById("time-scrubber");
+          scrubber.mode = mode;
+          scrubber.renderDateIndicators();
+        });
+      });
+
+      document.querySelectorAll('input[name="season-indicator"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          const style = radio.value;
+          const scrubber = document.getElementById("time-scrubber");
+          scrubber.setSeasonIndicatorStyle(style);
+        });
+      });
+
+      const scrubber = document.getElementById("time-scrubber");
+      const getConfigureState = () => ({
+        playButton: document.getElementById("configure-play-button")?.checked ?? true,
+        prevNextButtons: document.getElementById("configure-prev-next")?.checked ?? true,
+        scrollbar: document.getElementById("configure-scrollbar")?.checked ?? true,
+        seasonIndicator: document.getElementById("configure-season-indicator")?.checked ?? true,
+        currentDate: document.getElementById("configure-current-date")?.checked ?? true,
+        seasonLabel: document.getElementById("configure-season-label")?.checked ?? false,
+      });
+      const applyConfigure = () => scrubber.setConfigureVisibility(getConfigureState());
+      ["configure-play-button", "configure-prev-next", "configure-scrollbar", "configure-season-indicator", "configure-current-date", "configure-season-label"].forEach((id) => {
+        document.getElementById(id)?.addEventListener("change", applyConfigure);
+      });
+    </script>
+  </body>
+</html>
